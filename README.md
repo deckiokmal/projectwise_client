@@ -83,7 +83,7 @@ asyncio.run(main())
 ## CLI Interaktif
 
 ```bash
-python frontend/cli_chat.py
+python -m frontend.cli_chat
 ```
 
 1. Masukkan URL MCP Server (atau Enter untuk `http://localhost:5000/sse`).
