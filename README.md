@@ -112,10 +112,10 @@ projectwise-client/
 
 ```mermaid
 graph TD
-    A[User prompt] -->|OpenAI ChatCompletion| B(MCPClient.process_query)
+    A[User prompt] -->|OpenAI ChatCompletion| B[MCPClient.process_query]
     B --> C{Perlu tool?}
     C -- Tidak --> D[Balasan LLM > User]
-    C -- Ya --> E[call_tool()]
+    C -- Ya --> E[call_tool]
     E --> F[List tools & eksekusi]
     F --> G|Result| B
     B --> D
