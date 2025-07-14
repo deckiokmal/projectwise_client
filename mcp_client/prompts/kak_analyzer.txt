@@ -38,10 +38,18 @@ PROSEDUR WAJIB (KAK_ANALYZER_WORKFLOW)
 ════════════════════════════════════════════════════
 ATURAN TAMBAHAN
 ════════════════════════════════════════════════════
-• Gunakan hanya dua MCP Tools di atas dan dalam urutan tepat [1] lalu [4].
+• Gunakan hanya kedua jenis MCP Tool di atas (tidak ada tool lain) dan dalam urutan tepat [1] lalu [4].
 • Jangan pernah menambahkan instruksi, label, atau penjelasan di luar JSON.
-• Jika ada kesalahan dalam input, kembalikan pesan error singkat yang jelas
-  (bahasa Indonesia) dan **jangan** panggil tool apa pun.
+
+• Jalankan langkah [1] satu kali saja, **kecuali** pemanggilan pertama gagal karena 
+  `kak_tor_md_name` tidak ditemukan.
+  ◦ Dalam kasus ini, tentukan nama file markdown yang **paling mendekati** berdasarkan
+    informasi file yang tersedia.
+  ◦ Panggil kembali `build_summary_tender_payload` **hanya sekali** dengan nama file
+    yang telah diperbaiki.
+  ◦ Setelah pemanggilan berhasil, JANGAN memanggilnya lagi di percakapan yang sama.
+
+• Panggil tool langkah [4] (`save_summary_markdown_tool`) **hanya setelah**
+  pemanggilan `build_summary_tender_payload` yang berhasil menghasilkan payload JSON valid.
+
 • Pastikan struktur JSON valid dan lolos parsing.
-• Pastikan langkah [1] dijalankan tepat satu kali; jika sudah pernah dipanggil,
-  JANGAN memanggilnya lagi pada percakapan yang sama.

@@ -23,28 +23,45 @@ async def classify_intent(llm, query: str, model: str = "gpt-4o") -> IntentRoute
 
     # Few-shot sebagai dialog — 4 contoh “golden”
     fewshot = [
-        # 1
         {"role": "user", "content": "Analisa proyek Bank Sumsel Babel"},
         {
             "role": "assistant",
             "content": '{"intent":"kak_analyzer","confidence_score":0.95}',
         },
-        # 2
+        {"role": "user", "content": "Buat summaries/summary proyek Bank Sumsel Babel"},
+        {
+            "role": "assistant",
+            "content": '{"intent":"kak_analyzer","confidence_score":0.95}',
+        },
         {
             "role": "user",
             "content": "Apa saja barang dan jasa di dalam proyek bank sumsel babel?",
         },
         {
             "role": "assistant",
-            "content": '{"intent":"kak_analyzer","confidence_score":0.92}',
+            "content": '{"intent":"other","confidence_score":0.92}',
         },
-        # 3
+        {
+            "role": "user",
+            "content": "Berapa SLA di dalam proyek bank sumsel babel?",
+        },
+        {
+            "role": "assistant",
+            "content": '{"intent":"other","confidence_score":0.92}',
+        },
+        {
+            "role": "user",
+            "content": "Berikan informasi terkait proyek bank sumsel babel?",
+        },
+        {
+            "role": "assistant",
+            "content": '{"intent":"other","confidence_score":0.92}',
+        },
         {"role": "user", "content": "Buatkan proposal implementasi Switch Core"},
         {
             "role": "assistant",
             "content": '{"intent":"generate_document","confidence_score":0.9}',
         },
-        # 4
         {"role": "user", "content": "Berapa harga Bitcoin hari ini?"},
         {"role": "assistant", "content": '{"intent":"other","confidence_score":0.88}'},
     ]
