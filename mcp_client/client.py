@@ -18,6 +18,7 @@ import sys
 import io
 
 from mcp_client.utils.pipeline_kak import run as run_kak_pipeline
+from mcp_client.utils.pipeline_docgen import run as run_docgen_pipeline
 
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -157,7 +158,7 @@ class MCPClient:
             raise
 
     # TODO: proses query
-    async def process_query(self, query: str, max_turns: int = 10):
+    async def process_query(self, query: str, max_turns: int = 20):
         """Process a query using OpenAI and available MCP tools in a multi-turn loop.
 
         Args:
@@ -192,15 +193,31 @@ class MCPClient:
             kak_md = best_match(all_files, slug) or f"{slug}"  # type: ignore
             return await run_kak_pipeline(
                 client=self,
-                query=query,
+                user_query=query,
                 prompt_instruction_name="kak_analyzer",
                 kak_tor_md_name=kak_md,
                 max_turns=max_turns,
             )
         elif intent == "generate_document":
-            return "Pipeline Dokumen Generator belum diimplementasikan."
+            self.logger.info("Pipeline Document Generator dijalankan.")
+            slug = infer_kak_md(query)
+            try:
+                files_json = await self.call_tool("list_kak_files", {})
+                all_files: list[str] = json.loads(files_json)
+                self.logger.info(f"List all_files: {all_files}")
+            except Exception:
+                all_files = []
+
+            kak_md = best_match(all_files, slug) or f"{slug}"  # type: ignore
+            return await run_docgen_pipeline(
+                client=self,
+                project_name=kak_md,
+                user_query=query,
+                override_template=None,
+                max_turns=max_turns,
+            )
         else:
-            # client.py/process_query
+            # Intent Other
             try:
                 system_prompt = {
                     "role": "system",

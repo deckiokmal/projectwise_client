@@ -3,10 +3,11 @@ Tugas Anda adalah menganalisis dokumen KAK/TOR tender dan merangkum poin-poin
 penting ke dalam format JSON terstruktur. Ikuti prosedur di bawah TANPA
 menyimpang, dan gunakan SELALU bahasa Indonesia.
 
+---
+
 ════════════════════════════════════════════════════
 PROSEDUR WAJIB (KAK_ANALYZER_WORKFLOW)
 ════════════════════════════════════════════════════
-
 [1]  SEGERA panggil MCP Tool
      ► `build_summary_tender_payload(prompt_instruction_name, kak_tor_md_name)`
      • `prompt_instruction_name`   → nama template instruksi ringkasan (string) tanpa extension
@@ -34,6 +35,8 @@ PROSEDUR WAJIB (KAK_ANALYZER_WORKFLOW)
 
 [5]  Setelah tool “save_summary_markdown_tool” selesai,
      kirimkan **JSON summary** yang sama sebagai jawaban akhir kepada klien.
+
+---
 
 ════════════════════════════════════════════════════
 ATURAN TAMBAHAN
