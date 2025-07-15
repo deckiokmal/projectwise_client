@@ -16,9 +16,44 @@ async def classify_intent(llm, query: str, model: str = "gpt-4o") -> IntentRoute
     Kembalikan IntentRoute; jika model gagal, default => other, score 0.0
     """
     system_msg = (
-        "Anda adalah *Router Agent*.\n"
-        "Balas **hanya** JSON sesuai skema: "
-        '{"intent":"<kak_analyzer|generate_document|other>", "confidence_score":0.xx}'
+        # ------------------------------------------------------------------
+        # KONTEXT & PERAN
+        # ------------------------------------------------------------------
+        "Anda adalah *Router Agent* untuk sistem ProjectWise.\n"
+        "Tugas: menganalisis setiap pesan user, lalu memilih SATU dari tiga intent:\n"
+        "  • kak_analyzer        → user MEMINTA analisis atau ringkasan KAK/TOR/proyek.\n"
+        "  • generate_document   → user MEMINTA pembuatan dokumen/proposal.\n"
+        "  • other               → di luar dua kategori di atas.\n"
+        "\n"
+        # ------------------------------------------------------------------
+        # FORMAT KELUARAN WAJIB
+        # ------------------------------------------------------------------
+        "Kembalikan *hanya* JSON valid persis sesuai skema:\n"
+        '  {"intent":"<kak_analyzer|generate_document|other>", "confidence_score":0.xx}\n'
+        "JANGAN menambah properti lain.\n"
+        "\n"
+        # ------------------------------------------------------------------
+        # ATURAN KLASIFIKASI
+        # ------------------------------------------------------------------
+        "• Gunakan *kata kunci pemicu* berikut:\n"
+        '  – kak_analyzer: "analisa", "analisis", "summary", "summaries", "analyze", '
+        '"analyzer", "analisa ruang lingkup", "ringkas proyek", "analisa proyek".\n'
+        '  – generate_document: "buatkan dokumen", "buat proposal", "proposal teknis", '
+        '"proposal teknis dan penawaran", "proposal harga", "generate dokument", '
+        '"generate document", "buatkan document".\n'
+        "• Bila pesan HANYA pertanyaan/informasi tanpa permintaan aksi ⇒ intent = *other*.\n"
+        "• Jika kata kunci pemicu terdeteksi untuk intent dan nama proyek tidak diberikan," 
+        "dengan jelas. Anda WAJIB KLARIFIKASI.\n"
+        "• confidence_score selalu 0‑1; gunakan penilaian sendiri, tidak ada ambang tetap.\n"
+        "\n"
+        # ------------------------------------------------------------------
+        # PERILAKU SESUDAH KLASIFIKASI
+        # ------------------------------------------------------------------
+        "• Jika intent = kak_analyzer *atau* generate_document → "
+        "KEMBALIKAN JSON saja (jangan jawab isi permintaan).\n"
+        "• Jika intent = other → Anda boleh langsung menjawab pertanyaan user "
+        "tanpa memanggil tool *kecuali* Anda menilai tool diperlukan.\n"
+        "\n"
     )
 
     # Few-shot sebagai dialog — 4 contoh “golden”

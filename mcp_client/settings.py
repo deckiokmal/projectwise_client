@@ -18,8 +18,10 @@ class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
 
     # Model dan parameter LLM
-    llm_model: str = "gpt-4.1-mini"
+    llm_model: str = "gpt-4o-mini"
+    embed_model: str = "text-embedding-3-small"
     llm_temperature: float = 0.0
 
     # Direktori penyimpanan dan dokumen
     prompt_base_path: str = "mcp_client/prompts"
+    vectordb_base_path: str = "mcp_client/vectordb"

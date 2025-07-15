@@ -48,10 +48,10 @@ async def interactive():
     try:
         while True:
             query = input("\nAnda > ").strip()
+            if query.lower() in ["exit", "quit"]:
+                break
             if not query:
                 continue
-            if query.lower() in {":quit", ":exit"}:
-                break
 
             # Proses query
             try:

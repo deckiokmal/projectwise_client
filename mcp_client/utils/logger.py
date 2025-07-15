@@ -2,6 +2,7 @@ import logging
 import sys
 from pathlib import Path
 
+
 # Buat folder logs jika belum ada
 log_dir = Path(__file__).resolve().parent.parent.parent / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)

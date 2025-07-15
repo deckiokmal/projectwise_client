@@ -1,11 +1,15 @@
+import sys
+import io
 import json
-from mcp_client.utils.logger import logger
-from mcp_client.utils.safe_args import _safe_args
+
+
+from mcp_client.utils.safe_args import _safe_args, _truncate_by_tokens
 from mcp_client.settings import Settings
 from contextlib import AsyncExitStack
 from typing import Any, Dict, List, Optional
 from mcp_client.utils.intent_router import classify_intent
 from mcp_client.utils.slug_kak import infer_kak_md, best_match
+from mcp_client.utils.mem0_utils import Mem0Manager
 
 import traceback
 import nest_asyncio
@@ -14,15 +18,21 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 from openai import AsyncOpenAI
-import sys
-import io
 
 from mcp_client.utils.pipeline_kak import run as run_kak_pipeline
 from mcp_client.utils.pipeline_docgen import run as run_docgen_pipeline
 
+import asyncio
+import uuid
+import time
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+from mcp_client.utils.logger import logger  # noqa: E402
+
+TOOL_TIMEOUT_SEC = 30
+PIPE_TIMEOUT_SEC = 180
 
 
 nest_asyncio.apply()
@@ -47,6 +57,7 @@ class MCPClient:
         self.stdio: Optional[Any] = None
         self.write: Optional[Any] = None
         self.llm = AsyncOpenAI()
+        self.memory_mgr = Mem0Manager()
         self.model = model
         self.tools = []  # Populated by MCP Server available tools
         self.messages = []  # Chain of thoug store
@@ -87,6 +98,7 @@ class MCPClient:
 
             # Inisialisasi koneksi
             await self.session.initialize()
+            await self.memory_mgr.init()
             self.logger.info("Berhasil terhubung ke MCP Server.")
 
             # List available tools
@@ -157,168 +169,223 @@ class MCPClient:
             self.logger.error(f"Gagal mendapatkan MCP Tools: {e}")
             raise
 
-    # TODO: proses query
-    async def process_query(self, query: str, max_turns: int = 20):
-        """Process a query using OpenAI and available MCP tools in a multi-turn loop.
+    # TODO: proses query with chat memory mem0
+    async def process_query(
+        self, query: str, user_id: str = "default", max_turns: int = 20
+    ) -> str:
+        trace_id = uuid.uuid4().hex[:8]
+        tic = time.perf_counter()
+        self.logger.info(f"[{trace_id}] > Memproses query: {query!r}")
 
-        Args:
-            query (str): The user query.
-            max_turns (int): The maximum number of tool-calling turns before stopping.
-
-        Returns:
-            str: The final response from the LLM.
-
-        Raises:
-            Exception: Re-raises any exception that occurs during the LLM call or tool execution after logging the error.
-        """
-        self.logger.info(f"Memproses query: '{query}'")
-
-        route = await classify_intent(self.llm, query, self.model)
-        self.logger.info(
-            f"Intent terdeteksi: {route.intent} (conf={route.confidence_score:.2f})"
-        )
-        # 1. Deteksi user intent [kak_analyzer, generate_document, other]
-        intent = route.intent if route.confidence_score >= 0.7 else "other"
-
-        if intent == "kak_analyzer":
-            self.logger.info("Pipeline KAK dijalankan.")
-            slug = infer_kak_md(query)
+        # ---------- 1. Intent Classification (dengan retry) -------------------- #
+        intent = "other"
+        for attempt in range(3):
             try:
-                files_json = await self.call_tool("list_kak_files", {})
-                all_files: list[str] = json.loads(files_json)
-                self.logger.info(f"List all_files: {all_files}")
-            except Exception:
-                all_files = []
-
-            kak_md = best_match(all_files, slug) or f"{slug}"  # type: ignore
-            return await run_kak_pipeline(
-                client=self,
-                user_query=query,
-                prompt_instruction_name="kak_analyzer",
-                kak_tor_md_name=kak_md,
-                max_turns=max_turns,
-            )
-        elif intent == "generate_document":
-            self.logger.info("Pipeline Document Generator dijalankan.")
-            slug = infer_kak_md(query)
-            try:
-                files_json = await self.call_tool("list_kak_files", {})
-                all_files: list[str] = json.loads(files_json)
-                self.logger.info(f"List all_files: {all_files}")
-            except Exception:
-                all_files = []
-
-            kak_md = best_match(all_files, slug) or f"{slug}"  # type: ignore
-            return await run_docgen_pipeline(
-                client=self,
-                project_name=kak_md,
-                user_query=query,
-                override_template=None,
-                max_turns=max_turns,
-            )
-        else:
-            # Intent Other
-            try:
-                system_prompt = {
-                    "role": "system",
-                    "content": "Anda adalah “ProjectWise”, asisten virtual untuk tim Presales & PM.",
-                }
-                messages = [system_prompt, {"role": "user", "content": query}]
-
-                tools = await self.get_tools()
-
-                for turn in range(max_turns):
-                    self.logger.info(f"--- Turn {turn + 1}/{max_turns} ---")
-
-                    # Call the LLM
-                    response = await self.llm.chat.completions.create(
-                        model=self.model,
-                        messages=messages,  # type: ignore
-                        tools=tools,  # type: ignore
-                        tool_choice="auto",
-                    )
-
-                    assistant_message = response.choices[0].message
-                    # Add assistant's response to the conversation history
-                    messages.append(assistant_message.model_dump())
-
-                    # If there are no tool calls, we have our final answer.
-                    if not assistant_message.tool_calls:
-                        self.logger.info("LLM memberikan jawaban akhir.")
-                        return (
-                            assistant_message.content
-                            or "Tidak ada jawaban yang diberikan."
-                        )
-
-                    # If there are tool calls, execute them.
-                    self.logger.info(
-                        f"LLM meminta pemanggilan tool: {[tc.function.name for tc in assistant_message.tool_calls]}"
-                    )
-
-                    # Note: OpenAI can request multiple tool calls in parallel.
-                    # We execute them and append all results before the next LLM call.
-                    for tool_call in assistant_message.tool_calls:
-                        function_name = tool_call.function.name
-                        try:
-                            function_args = json.loads(tool_call.function.arguments)
-                            self.logger.info(
-                                f"Memanggil tool '{function_name}' dengan argumen: {_safe_args(function_args)}"
-                            )
-                            tool_output = await self.call_tool(
-                                function_name, function_args
-                            )
-                        except Exception as e:
-                            self.logger.error(
-                                f"Error saat memanggil tool '{function_name}': {e}"
-                            )
-                            tool_output = f"Error executing tool {function_name}: {e}"
-
-                        # Append tool result to messages for the next turn
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "name": function_name,
-                                "content": tool_output,
-                            }
-                        )
-
-                # If the loop finishes without a final answer, return a message.
-                self.logger.warning(f"Mencapai batas maksimum {max_turns} turn.")
-                return "Proses mencapai batas maksimum turn tanpa jawaban akhir."
-
+                route = await classify_intent(self.llm, query, self.model)
+                intent = route.intent if route.confidence_score >= 0.7 else "other"
+                self.logger.info(
+                    f"[{trace_id}] Intent: {intent} (conf={route.confidence_score:.2f})"
+                )
+                break
             except Exception as e:
-                self.logger.error(f"Gagal memproses query: {e}")
-                traceback.print_exc()
-                raise
+                self.logger.error(
+                    f"[{trace_id}] classify_intent gagal (try {attempt + 1}/3): {e}"
+                )
+                if attempt == 2:
+                    self.logger.warning(f"[{trace_id}] Fallback ke intent 'other'")
+                await asyncio.sleep(2**attempt)
 
-    # TODO: call llm
-    async def call_llm(self):
-        """
-        Asynchronously calls the Large Language Model (LLM) with the current message history.
-
-        This method sends the conversation history stored in `self.messages` and the available tools defined in `self.tools` to the specified GPT model. It allows the model to automatically choose whether to call a tool or respond with a message.
-
-        Returns:
-            The awaited response object from the LLM API. The structure of this object depends on the specific LLM client library being used, but it typically contains the model's output, such as text content or a request to use a tool.
-
-        Raises:
-            Exception: Propagates any exception that occurs during the API call after logging the error.
-        """
+        # ---------- 2. Jalankan pipeline khusus -------------------------------- #
         try:
-            # Initial OpenAI API call
-            response = self.llm.responses.create(
-                model="gpt-4.1",
-                input=self.messages,  # type: ignore
-                tool_choice="auto",
-                tools=self.tools,  # type: ignore
+            if intent == "kak_analyzer":
+                return await self._run_kak(trace_id, query, user_id, max_turns)
+            elif intent == "generate_document":
+                return await self._run_docgen(trace_id, query, user_id, max_turns)
+            else:
+                return await self._run_other(trace_id, query, user_id, max_turns)
+
+        finally:
+            toc = time.perf_counter() - tic
+            self.logger.info(f"[{trace_id}] -- Total latency: {toc:0.2f}s")
+
+    # ======================= HELPER – PIPELINE SPESIFIK ========================= #
+    async def _run_kak(self, trace_id: str, query: str, user_id: str, max_turns: int):
+        slug = infer_kak_md(query)
+
+        # list_kak_files bisa gagal; aman-kan
+        try:
+            files_json = await self.call_tool("list_kak_files", {})
+            all_files = json.loads(files_json)
+        except Exception:
+            all_files = []
+        kak_md = best_match(all_files, slug) or slug  # type: ignore
+
+        try:
+            result = await asyncio.wait_for(
+                run_kak_pipeline(
+                    client=self,
+                    user_query=query,
+                    prompt_instruction_name="kak_analyzer",
+                    kak_tor_md_name=kak_md,  # type: ignore
+                    max_turns=max_turns,
+                ),
+                timeout=PIPE_TIMEOUT_SEC,
+            )
+            reply = f"Ringkasan KAK/TOR “{kak_md}” selesai dibuat.\n\nHasil:\n{result}"
+        except asyncio.TimeoutError:
+            self.logger.error(f"[{trace_id}] run_kak_pipeline TIMEOUT")
+            reply = "Maaf, analisis KAK memerlukan waktu lebih lama dari batas sistem."
+        except Exception as e:
+            self.logger.error(f"[{trace_id}] run_kak_pipeline error: {e}")
+            reply = f"Terjadi kesalahan saat analisis KAK: {e}"
+
+        # commit memori
+        await self.memory_mgr.add_conversation(
+            [
+                {"role": "user", "content": query},
+                {"role": "assistant", "content": reply},
+            ],
+            user_id=user_id,
+        )
+        return reply
+
+    async def _run_docgen(
+        self, trace_id: str, query: str, user_id: str, max_turns: int
+    ):
+        slug = infer_kak_md(query)
+
+        try:
+            files_json = await self.call_tool("list_kak_files", {})
+            all_files = json.loads(files_json)
+        except Exception:
+            all_files = []
+        kak_md = best_match(all_files, slug) or slug  # type: ignore
+
+        try:
+            result = await asyncio.wait_for(
+                run_docgen_pipeline(
+                    client=self,
+                    project_name=kak_md,  # type: ignore
+                    user_query=query,
+                    override_template=None,
+                    max_turns=max_turns,
+                ),
+                timeout=PIPE_TIMEOUT_SEC,
+            )
+            reply = f"Proposal berhasil dibuat untuk proyek “{kak_md}”.\n\nLokasi file: {result}"
+        except asyncio.TimeoutError:
+            self.logger.error(f"[{trace_id}] run_docgen_pipeline TIMEOUT")
+            reply = "Maaf, pembuatan proposal melebihi batas waktu."
+        except Exception as e:
+            self.logger.error(f"[{trace_id}] run_docgen_pipeline error: {e}")
+            reply = f"Terjadi kesalahan saat generate proposal: {e}"
+
+        await self.memory_mgr.add_conversation(
+            [
+                {"role": "user", "content": query},
+                {"role": "assistant", "content": reply},
+            ],
+            user_id=user_id,
+        )
+        return reply
+
+    # ----------------- Fallback chat dengan Tool-Calling ------------------------ #
+    async def _run_other(self, trace_id: str, query: str, user_id: str, max_turns: int):
+        # ambil memori relevan
+        try:
+            memories = await self.memory_mgr.get_memories(query, limit=5)
+        except Exception as e:
+            self.logger.error(f"[{trace_id}] mem0 search error: {e}")
+            memories = []
+
+        mem_block = (
+            "\n".join(f"- {_truncate_by_tokens(m)}" for m in memories) or "[Tidak ada]"
+        )
+        system_mem = {
+            "role": "system",
+            "content": (
+                "Memori historis relevan:\n"
+                f"{mem_block}\n\n"
+                "Gunakan memori di atas jika membantu."
+            ),
+        }
+        messages = [
+            system_mem,
+            {
+                "role": "system",
+                "content": "Anda adalah “ProjectWise”, asisten virtual untuk tim Presales & PM.",
+            },
+            {"role": "user", "content": query},
+        ]
+        tools = await self.get_tools()
+        final_answer = None
+
+        try:
+            for turn in range(max_turns):
+                self.logger.info(f"[{trace_id}] - Turn {turn + 1}/{max_turns}")
+                response = await self.llm.chat.completions.create(
+                    model=self.model,
+                    messages=messages,  # type: ignore
+                    tools=tools,  # type: ignore
+                    tool_choice="auto",
+                )
+                assistant_msg = response.choices[0].message
+                messages.append(assistant_msg.model_dump())
+
+                if not assistant_msg.tool_calls:  # ▶ Jawaban final
+                    final_answer = assistant_msg.content or "Tidak ada jawaban."
+                    break
+
+                # ─ Jalankan setiap tool call (parallel → gather) ─
+                async def _exec(tc):
+                    fname = tc.function.name
+                    try:
+                        args = json.loads(tc.function.arguments)
+                        self.logger.info(
+                            f"[{trace_id}]  · tool '{fname}' args={_safe_args(args)}"
+                        )
+                        return await asyncio.wait_for(
+                            self.call_tool(fname, args), timeout=TOOL_TIMEOUT_SEC
+                        )
+                    except asyncio.TimeoutError:
+                        self.logger.error(f"[{trace_id}] tool {fname} TIMEOUT")
+                        return f"TIMEOUT executing {fname}"
+                    except Exception as e:
+                        self.logger.error(f"[{trace_id}] tool {fname} error: {e}")
+                        return f"Error executing {fname}: {e}"
+
+                results = await asyncio.gather(
+                    *[_exec(tc) for tc in assistant_msg.tool_calls]
+                )
+                # masukkan hasil ke messages
+                for tc, out in zip(assistant_msg.tool_calls, results):
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "name": tc.function.name,
+                            "content": out,
+                        }
+                    )
+
+            if not final_answer:
+                self.logger.warning(f"[{trace_id}] Batas {max_turns} turn tercapai.")
+                final_answer = (
+                    "Maaf, saya belum bisa menyelesaikan permintaan dalam batas waktu."
+                )
+
+        finally:
+            answer_to_save = final_answer or "Maaf, terjadi kegagalan internal."
+            # commit memori apa pun hasilnya
+            await self.memory_mgr.add_conversation(
+                [
+                    {"role": "user", "content": query},
+                    {"role": "assistant", "content": answer_to_save},
+                ],
+                user_id=user_id,
             )
 
-            return await response  # type: ignore
-
-        except Exception as e:
-            self.logger.error(f"Gagal call_llm: {e}")
-            raise
+        return answer_to_save
 
     # TODO: cleanup
     async def cleanup(self):
