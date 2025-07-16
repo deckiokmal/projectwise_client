@@ -14,7 +14,7 @@ try:
 except (FileNotFoundError, IOError):
     # Fallback ke prompt bawaan jika file belum tersedia
     _SYSTEM_PROMPT = (
-        "Anda adalah “ProjectWise”, asisten virtual untuk tim Presales & Project Manager."
+        "Anda adalah “ProjectWise”, asisten cerdas untuk tim Presales & Project Manager."
         "Tugas Anda adalah menganalisis dokumen KAK/TOR tender dan merangkum poin-poin"
         "penting ke dalam format JSON terstruktur. Ikuti "
         "prosedur di bawah TANPA"

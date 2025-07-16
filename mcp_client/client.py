@@ -231,7 +231,7 @@ class MCPClient:
                 ),
                 timeout=PIPE_TIMEOUT_SEC,
             )
-            reply = f"Ringkasan KAK/TOR “{kak_md}” selesai dibuat.\n\nHasil:\n{result}"
+            reply = result
         except asyncio.TimeoutError:
             self.logger.error(f"[{trace_id}] run_kak_pipeline TIMEOUT")
             reply = "Maaf, analisis KAK memerlukan waktu lebih lama dari batas sistem."

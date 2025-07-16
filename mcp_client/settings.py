@@ -24,4 +24,3 @@ class Settings(BaseSettings):
 
     # Direktori penyimpanan dan dokumen
     prompt_base_path: str = "mcp_client/prompts"
-    vectordb_base_path: str = "mcp_client/vectordb"

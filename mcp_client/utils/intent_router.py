@@ -19,11 +19,13 @@ async def classify_intent(llm, query: str, model: str = "gpt-4o") -> IntentRoute
         # ------------------------------------------------------------------
         # KONTEXT & PERAN
         # ------------------------------------------------------------------
-        "Anda adalah *Router Agent* untuk sistem ProjectWise.\n"
+        "Anda adalah *AI ProjectWise* assistant cerdas untuk tim Presales & Project Manager.\n"
         "Tugas: menganalisis setiap pesan user, lalu memilih SATU dari tiga intent:\n"
         "  • kak_analyzer        → user MEMINTA analisis atau ringkasan KAK/TOR/proyek.\n"
         "  • generate_document   → user MEMINTA pembuatan dokumen/proposal.\n"
         "  • other               → di luar dua kategori di atas.\n"
+        " Jika user MEMINTA analisis proyek tetapi tidak memberikan informasi nama proyeknya, "
+        " Mintalah klafirikasi."
         "\n"
         # ------------------------------------------------------------------
         # FORMAT KELUARAN WAJIB
@@ -42,7 +44,7 @@ async def classify_intent(llm, query: str, model: str = "gpt-4o") -> IntentRoute
         '"proposal teknis dan penawaran", "proposal harga", "generate dokument", '
         '"generate document", "buatkan document".\n'
         "• Bila pesan HANYA pertanyaan/informasi tanpa permintaan aksi ⇒ intent = *other*.\n"
-        "• Jika kata kunci pemicu terdeteksi untuk intent dan nama proyek tidak diberikan," 
+        "• Jika kata kunci pemicu terdeteksi untuk intent dan nama proyek tidak diberikan,"
         "dengan jelas. Anda WAJIB KLARIFIKASI.\n"
         "• confidence_score selalu 0‑1; gunakan penilaian sendiri, tidak ada ambang tetap.\n"
         "\n"
@@ -99,6 +101,8 @@ async def classify_intent(llm, query: str, model: str = "gpt-4o") -> IntentRoute
         },
         {"role": "user", "content": "Berapa harga Bitcoin hari ini?"},
         {"role": "assistant", "content": '{"intent":"other","confidence_score":0.88}'},
+        {"role": "user", "content": "Bantu saya analisa proyek dong."},
+        {"role": "assistant", "content": '{"intent":"other","confidence_score":0.80}'},
     ]
 
     messages = [

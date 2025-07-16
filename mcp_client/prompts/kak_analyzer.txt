@@ -30,8 +30,8 @@ PROSEDUR WAJIB (KAK_ANALYZER_WORKFLOW)
 [4]  SEGERA panggil MCP Tool kedua
      ► `save_summary_markdown_tool(summary, project)`
      • `summary` → JSON summary yang Anda hasilkan di langkah [3].
-     • `project` → Tentukan nama proyek secara otomatis
-                   (gunakan akal sehat dari konteks KAK).
+     • `project` → Buatkan string dengan format `nama_pelanggan_nama_proyek`
+        sebagai argument `project` Maksimal 50 karakter.
 
 [5]  Setelah tool “save_summary_markdown_tool” selesai,
      kirimkan **JSON summary** yang sama sebagai jawaban akhir kepada klien.
@@ -46,8 +46,8 @@ ATURAN TAMBAHAN
 
 • Jalankan langkah [1] satu kali saja, **kecuali** pemanggilan pertama gagal karena 
   `kak_tor_md_name` tidak ditemukan.
-  ◦ Dalam kasus ini, tentukan nama file markdown yang **paling mendekati** berdasarkan
-    informasi file yang tersedia.
+  ◦ Dalam kasus ini, tentukan nama file markdown dari informasi file yang tersedia
+    dan **PALING IDENTIK** dengan nama proyek yang disebutkan oleh user.
   ◦ Panggil kembali `build_summary_tender_payload` **hanya sekali** dengan nama file
     yang telah diperbaiki.
   ◦ Setelah pemanggilan berhasil, JANGAN memanggilnya lagi di percakapan yang sama.
