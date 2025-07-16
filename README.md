@@ -7,20 +7,23 @@ Client ini menangani discovery & eksekusi _tool_ (function calling) yang dipubli
 
 ## Fitur Utama
 
-| Fitur                   | Ringkasan                                                                                |
-| ----------------------- | ---------------------------------------------------------------------------------------- |
-| **Dual transport**      | `connect()` otomatis memilih SSE (`http://host:port/sse`) atau proses lokal lewat STDIO. |
-| **Auto tool discovery** | Memanggil `list_tools()` dan menyimpan skema setiap tool untuk OpenAI function-calling.  |
-| **Query orchestration** | `process_query()` ⇒ prompt user ➜ LLM ➜ (opsional) tool-call ➜ LLM final.                |
-| **CLI interaktif**      | `cli_chat.py` menyediakan REPL terminal siap pakai.                                      |
-| **Logging terpusat**    | Log ditulis ke `logs/` secara otomatis, level default INFO di console & DEBUG ke file.   |
+| Fitur                        | Ringkasan                                                                                |
+| ---------------------------- | ---------------------------------------------------------------------------------------- |
+| **Dual transport**           | `connect()` otomatis memilih SSE (`http://host:port/sse`) atau proses lokal lewat STDIO. |
+| **Auto tool discovery**      | Memanggil `list_tools()` dan menyimpan skema setiap tool untuk OpenAI function-calling.  |
+| **Query orchestration**      | `process_query()` ⇒ prompt user ➜ LLM ➜ (opsional) tool-call ➜ LLM final.                |
+| **CLI interaktif**           | `cli_chat.py` menyediakan REPL terminal siap pakai.                                      |
+| **Logging terpusat**         | Log ditulis ke `logs/` secara otomatis, level default INFO di console & DEBUG ke file.   |
+| **Long Term Memory Context** | Menggunakan Mem0ai Python SDK untuk mengingat conversation                               |
 
 ---
 
 ## Persyaratan
 
 - **Python ≥ 3.13** (tertera di `pyproject.toml`)&#x20;
+- **Docker Container** (Pastikan sudah terinstall di local machine)
 - Kunci OpenAI & `.env` (lihat contoh di `.env_example`).
+- Qdrant Database yang di Install pada Docker Container.
 
 ---
 
@@ -54,6 +57,36 @@ LLM_MODEL=gpt-4o                # optional override
 ```
 
 Semua variabel dibaca di kelas `Settings`&#x20;
+
+---
+
+## Install Qdrant Vector Database
+
+```bash
+docker pull qdrant/qdrant
+
+docker run -p 6333:6333 -p 6334:6334 \
+    -v $(pwd)/qdrant_storage:/qdrant/storage:z \
+    qdrant/qdrant
+```
+
+### Menggunakan docker compose
+
+```
+cd docs/
+docker-compose up -d
+```
+
+### Alternatif jika tidak memiliki Docker, bisa simpan di Memory (RAM)
+
+Ubah config di mcp_client\utils\mem0_utils.py
+Aktifkan history db path
+
+```python
+def _default_config() -> Dict[str, Any]:
+    ...
+    "history_db_path": "mcp_client/qdrant_storage/history.db",
+```
 
 ---
 

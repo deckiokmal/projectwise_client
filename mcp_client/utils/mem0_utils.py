@@ -49,7 +49,7 @@ def _default_config() -> Dict[str, Any]:
         },
         # Opsional – boleh ditambahkan jika memakai graph store / history DB
         # "graph_store": {...},
-        # "history_db_path": "path/to/history.db",
+        # "history_db_path": mcp_client/qdrant_storage/history.db,
         "version": "v1.1",
     }
 
